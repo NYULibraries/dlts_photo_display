@@ -1,0 +1,253 @@
+<?php
+
+function dlts_photo_display_menu() {
+
+  /* Requests for thumbnails embedded in other sites
+    (i.e., finding aids) will have 'mode/thumb' at
+    the end of the URL
+  */
+   $items['node/%/mode/thumb'] = array(
+     'page callback' => 'dlts_photo_display_return_thumb',
+     'access callback' => TRUE,
+     'page arguments' => array(1),
+   );
+   $items['photos/%/mode/thumb'] = array(
+     'page callback' => 'dlts_photo_display_return_thumb_by_id',
+     'access callback' => TRUE,
+     'page arguments' => array(1),
+   );
+  $items['node/%/mode/embed'] = array(
+    'title' => 'oEmbed',
+    'page callback' => 'dlts_photo_display_return_embedded',
+    'access callback' => TRUE,
+    'page arguments' => array(1),
+    'delivery callback' => 'dlts_utilities_deliver_json',
+    'type' => MENU_CALLBACK,
+   );   
+   $items['photos/%/mode/embed'] = array(
+     'title' => 'oEmbed',
+     'page callback' => 'dlts_photo_display_return_embedded_by_id',
+     'access callback' => TRUE,
+     'page arguments' => array(1),
+     'delivery callback' => 'dlts_utilities_deliver_json',
+     'type' => MENU_CALLBACK,
+   );
+   
+   return $items;
+ }
+
+/**
+ * TO DO:
+ * Create a generic thumbnail not found jpeg and URL
+ * Replace redirects to home page with redirects to URL
+ * of "not-found" thumbnail
+ */
+
+/**
+ * TO DO:
+ * Consider removing support for /node/%/mode/thumb 
+ * and just merging the two functions below
+ */
+
+function dlts_photo_display_return_thumb_by_id($field_id) {
+  if ( module_exists('dlts_utilities') && function_exists('dlts_utilities_get_nid_by_field') ) {
+    $nid_list = dlts_utilities_get_nid_by_field('field_identifier', $field_id);
+    if ( isset($nid_list) && count($nid_list) > 0 ) {
+      dlts_photo_display_return_thumb($nid_list[0]);
+    }
+    else {
+      drupal_set_message("Unable to find the node id of the thumbnail you are looking for", "warning", FALSE);
+      drupal_goto('');
+    }
+  } 
+  else {
+    watchdog('dlts_photo_display', 'Function not found: dlts_utilities_get_nid_by_field');
+    drupal_set_message("Unable to find the node id of the thumbnail you are looking for", "warning", FALSE);
+    drupal_goto('/');
+  }
+  
+}
+
+function dlts_photo_display_return_thumb($nid) {
+  $node = node_load($nid);
+  $service_copy = field_get_items('node', $node, 'field_service_copy');
+  $service_copy_uri = $service_copy[0]['uri'];
+  $style = 'thumbnail';
+	$image_styles = image_styles();
+	$params = drupal_get_query_parameters();
+  if (isset($params['style']) && isset($image_styles[check_plain($params['style'])])) {
+   $style =  $image_styles[check_plain($params['style'])]['name'];
+  }	
+  $thumbnail_url = image_style_url($style, $service_copy_uri);
+  drupal_goto($thumbnail_url);  
+}
+
+/** 
+* Add display modes for 1) side metadata panels and 2) thumbnails in galleries and search.
+*/
+
+
+
+/**
+* Implements hook_entity_info_alter().
+*/
+function dlts_photo_display_entity_info_alter(&$entity_info) {
+  $entity_info['node']['view modes']['metadata'] = array(
+    'label' => t('Metadata List'),
+    'custom settings' => TRUE,
+  );
+  $entity_info['node']['view modes']['gallery'] = array(
+    'label' => t('Gallery Views'),
+    'custom settings' => TRUE,
+  );
+  
+  
+}
+
+/**
+* Implements hook_preprocess_node().
+*/
+function dlts_photo_display_preprocess_node(&$vars) {
+  switch ($vars['type']) {
+    case 'dlts_photograph':
+
+      switch( $vars['view_mode'] ){
+        case 'full':
+
+            /* Need to build metadata to be displayed with the photo */
+
+  
+  
+          /* In the future, these values will should be accessed via a global entity and
+            /or via APIs to ArhivesSpace / Finding Aids / R*. 
+            Or a mixture of these
+            */
+            
+          /* Repository Name and Call Number from the Site Metadata */
+
+          if ( module_exists('dlts_utilities') ) {
+        		$repository_name = dlts_utilities_partner_name();
+        		$collection_call_number = dlts_utilities_collection_call_number();
+        	}
+
+          /* For now, other global metadata from a "Collection" Node */
+
+          $vars['pagemeta_content'] = views_embed_view('photo_collection_metadata', 'block_1', '1' );
+          /*
+          
+          
+          $coll_id = current(current(current($vars['field_photo_collection'])));          
+        	$collection_node = node_load( current(current(current($vars['field_photo_collection']))) );
+          
+          $collection_date_field = field_get_items('node', $collection_node, 'field_date');
+          $collection_date = field_view_value('node', $collection_node, 'field_date', $collection_date_field[0]);
+          
+          $collection_use_restrictions_field = 
+
+          dpm( $collection_date );
+          */
+          break;
+				case 'gallery':
+					$vars['theme_hook_suggestions'][] = 'node__' . 'dlts_photograph' . '__gallery';
+					break;
+
+					
+				default:
+
+          break;
+      }
+      break;    
+    default:
+    
+      break;
+  }
+  
+}
+
+/**
+* Implements hook_views_pre_render().
+*/
+
+
+function dlts_photo_views_pre_render(&$view) {
+  if ( $view->name == 'photo_set_gallery') {
+    drupal_set_title( truncate_utf8( t($view->build_info['substitutions']['%1']), 100, TRUE, TRUE));
+  }
+  
+  if ( $view->name == 'photo_collection_metadata') {
+
+  }
+}
+
+
+/**
+* Oembed Functions and Theming - 
+* Maybe this should get broken out to a photo API module or to a centralized embed API module.
+*/
+
+
+
+/**
+ * Implementation of hook_theme().
+ */
+function dlts_photo_display_theme() {
+  return array(
+    'dlts_photo_display_oembed' => array(
+      'arguments' => array(
+        'url' => NULL,
+        'width' => NULL,
+        'height' => NULL,
+      ),
+    ),
+  );
+}
+
+/**
+ * Implements hook_custom_theme().
+ * http://api.drupal.org/api/drupal/modules--system--system.api.php/function/hook_custom_theme/7
+ */
+function dlts_photo_display_custom_theme() {
+  if (isset($_GET['oembed'])) {
+    return 'dlts_photo_oembed';
+  }
+}
+
+
+/*
+ * Themes functions
+ */
+
+function theme_dlts_photo_display_oembed( $arguments ) {
+  return '<iframe id="photo-viewer" src="' . $arguments['url'] .'" width="' . $arguments['width'] .'" height="' . $arguments['height'] .'"><p>' . t('Your browser does not support iframes.') . '</p></iframe>';
+}
+
+
+/* 
+ * Menu Callback for clients embedding
+ */
+function dlts_photo_display_return_embedded_by_id( $field_id ) { 
+  if ( module_exists('dlts_utilities') && function_exists('dlts_utilities_get_nid_by_field') ){
+    $nid_list = dlts_utilities_get_nid_by_field('field_identifier', $field_id);
+    if ( isset($nid_list) && count($nid_list) > 0 ) {
+      dlts_photo_display_return_embedded( $nid_list[0] );
+    } else {
+      drupal_set_message("Unable to find the node id of the photo you are looking for", "warning", FALSE);
+      drupal_goto('');
+    } 
+  } else {
+        watchdog('dlts_photo_display', 'Function not found: dlts_utilities_get_nid_by_field');
+        drupal_set_message("Unable to find the node id of the photo you are looking for", "warning", FALSE);
+        drupal_goto('/');
+  }
+}
+
+
+function dlts_photo_display_return_embedded( $nid ) {
+  $photo = node_load($nid);
+  $parameters = drupal_get_query_parameters();
+   // not sure why we add   oembed eq true
+  $parameters['oembed'] = 'true';
+  drupal_goto( 'node/' . $nid, array('query'=> $parameters));
+}
+
+

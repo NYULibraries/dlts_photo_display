@@ -1,0 +1,16 @@
+; $Id$
+name = dlts_photo_display
+description = "Add a metadata view mode display to the node"
+
+; Core version (required)
+core = 7.x
+
+; Package name (see http://drupal.org/node/542202 for a list of names)
+; package = 
+
+; PHP version requirement (optional)
+; php = 5.2
+
+project = "dlts_photographs"    
+
+dependencies[] = dlts_utilities
