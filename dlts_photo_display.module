@@ -50,43 +50,64 @@ function dlts_photo_display_menu() {
  */
 
 function dlts_photo_display_return_thumb_by_id($field_id) {
-  if ( module_exists('dlts_utilities') && function_exists('dlts_utilities_get_nid_by_field') ) {
-    $nid_list = dlts_utilities_get_nid_by_field('field_identifier', $field_id);
-    if ( isset($nid_list) && count($nid_list) > 0 ) {
-      dlts_photo_display_return_thumb($nid_list[0]);
-    }
-    else {
-      drupal_set_message("Unable to find the node id of the thumbnail you are looking for", "warning", FALSE);
-      drupal_goto('');
-    }
-  } 
-  else {
-    watchdog('dlts_photo_display', 'Function not found: dlts_utilities_get_nid_by_field');
-    drupal_set_message("Unable to find the node id of the thumbnail you are looking for", "warning", FALSE);
-    drupal_goto('/');
+
+  // Site won't work without DLTS utilities, not sure why we have this test here (aof1)
+  if (!module_exists('dlts_utilities')) die('DLTS utilities not found.');
+  // Site won't work without DLTS utilities, not sure why we have this test here (aof1)
+  if (!function_exists('dlts_utilities_get_nid_by_field')) die('Site using an outdated version of DLTS utilities.');
+
+  $parameters = drupal_get_query_parameters();
+  
+  // get a list of nodes
+  $nid_list = dlts_utilities_get_nid_by_field('field_identifier', $field_id);  
+  
+  // Check if we have nodes and die if can't find node id of the thumbnail
+  if (!isset($nid_list) || isset($nid_list) && count($nid_list) < 1) {
+    die('Unable to find the node id of the thumbnail you are looking for.');
   }
+  
+  $parameters['oembed'] = 'true';
+  
+  dlts_photo_display_return_thumb(current($nid_list), $parameters);
   
 }
 
-function dlts_photo_display_return_thumb($nid) {
+function dlts_photo_display_return_thumb($nid, $arguments = NULL) { // aof
+
+  // http://hdl.handle.net/2333.1/wh70s2cp?urlappend=/mode/thumb?style=155x0
+
   $node = node_load($nid);
+  
+  if ($arguments === NULL) {
+    $arguments = drupal_get_query_parameters();
+  }
+    
   $service_copy = field_get_items('node', $node, 'field_service_copy');
+  
   $service_copy_uri = $service_copy[0]['uri'];
+  
   $style = 'thumbnail';
+	
 	$image_styles = image_styles();
-	$params = drupal_get_query_parameters();
-  if (isset($params['style']) && isset($image_styles[check_plain($params['style'])])) {
-   $style =  $image_styles[check_plain($params['style'])]['name'];
-  }	
+	
+  if (
+    // request asked for an specific image style
+    isset($arguments['style']) 
+    && 
+    // style requested exist in Drupal
+    isset($image_styles[check_plain($arguments['style'])])
+  ) {
+   $style = $image_styles[check_plain($arguments['style'])]['name'];
+  }
+  
   $thumbnail_url = image_style_url($style, $service_copy_uri);
+  
   drupal_goto($thumbnail_url);  
 }
 
 /** 
 * Add display modes for 1) side metadata panels and 2) thumbnails in galleries and search.
 */
-
-
 
 /**
 * Implements hook_entity_info_alter().
@@ -242,12 +263,18 @@ function dlts_photo_display_return_embedded_by_id( $field_id ) {
 }
 
 
-function dlts_photo_display_return_embedded( $nid ) {
+function dlts_photo_display_return_embedded($nid) {
+
   $photo = node_load($nid);
+  
   $parameters = drupal_get_query_parameters();
+  
    // not sure why we add   oembed eq true
+  
   $parameters['oembed'] = 'true';
+  
   drupal_goto( 'node/' . $nid, array('query'=> $parameters));
+  
 }
 
 
